@@ -1,0 +1,107 @@
+{
+  "name": "explain-my-error",
+  "displayName": "Explain My Error",
+  "description": "Turns cryptic terminal errors into plain-English explanations with concrete fix steps.",
+  "version": "0.0.1",
+  "publisher": "PawanKumarRay",
+  "license": "MIT",
+  "author": "Pawan Kumar Ray",
+  "icon": "images/icon.png",
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "Other",
+    "Debuggers",
+    "Linters"
+  ],
+  "keywords": [
+    "error",
+    "terminal",
+    "debugging",
+    "explain",
+    "beginner",
+    "npm",
+    "python",
+    "git"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pawan-145/explain-my-error"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "explainMyError.explainLastError",
+        "title": "Explain My Error: Explain Last Terminal Error",
+        "icon": "$(lightbulb)"
+      },
+      {
+        "command": "explainMyError.explainSelection",
+        "title": "Explain My Error: Explain Selected Text"
+      },
+      {
+        "command": "explainMyError.toggleAutoDetect",
+        "title": "Explain My Error: Toggle Auto-Detect On Failure"
+      },
+      {
+        "command": "explainMyError.configureAiProvider",
+        "title": "Explain My Error: Configure AI Provider"
+      },
+      {
+        "command": "explainMyError.clearAiCache",
+        "title": "Explain My Error: Clear Cached AI Responses"
+      }
+    ],
+    "configuration": {
+      "title": "Explain My Error",
+      "properties": {
+        "explainMyError.autoDetect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically show a prompt when a terminal command exits with an error."
+        },
+        "explainMyError.useAiFallback": {
+          "type": "boolean",
+          "default": false,
+          "description": "When no local rule matches, send the error to an AI model (your choice of Google Gemini, Anthropic Claude, or OpenAI) for an explanation. Requires an API key for whichever provider you pick. Nothing is sent unless this is enabled."
+        },
+        "explainMyError.maxOutputLines": {
+          "type": "number",
+          "default": 40,
+          "description": "Maximum number of terminal output lines to scan when looking for an error."
+        },
+        "explainMyError.huggingfaceModel": {
+          "type": "string",
+          "default": "mistralai/Mistral-7B-Instruct-v0.2",
+          "description": "Which model to use when the AI provider is Hugging Face. Must be a model supported by an inference provider enabled on your Hugging Face account (see https://huggingface.co/settings/inference-providers)."
+        }
+      }
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "explainMyError.explainSelection",
+          "when": "editorHasSelection",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "coverage": "node scripts/generate-coverage.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.93.0",
+    "typescript": "^5.4.0"
+  }
+}
