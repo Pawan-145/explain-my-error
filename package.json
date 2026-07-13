@@ -2,7 +2,7 @@
   "name": "explain-my-error",
   "displayName": "Explain My Error",
   "description": "Turns cryptic terminal errors into plain-English explanations with concrete fix steps.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "PawanKumarRay",
   "license": "MIT",
   "author": "Pawan Kumar Ray",
