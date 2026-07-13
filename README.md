@@ -2,6 +2,14 @@
 
 Turns cryptic terminal errors into plain-English explanations with concrete fix steps — right inside VS Code.
 
+![Explain My Error catching a real C++ compile error](images/screenshot-real-world-cpp.png)
+
+*Real project, real error, real fix — auto-detected the moment the build failed.*
+
+![AI explanation on an uncovered language](images/screenshot-ai-explanation.png)
+
+*Even for errors outside the 99 built-in patterns, the AI fallback gives a precise, specific answer — not a generic guess.*
+
 ## Why
 
 When you're running a project and something fails in the terminal, the error message is often technically correct but hard to actually *use* — too much jargon, no clear next step. This extension gives you:
