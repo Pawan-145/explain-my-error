@@ -62,6 +62,18 @@ Anything not covered above still gets a reasonable explanation via the optional 
 3. Or run **Explain My Error: Explain Last Terminal Error** from the Command Palette (`Cmd/Ctrl+Shift+P`) at any time.
 4. Or select error text anywhere and run **Explain My Error: Explain Selected Text**.
 
+## All commands
+
+Access these anytime via the Command Palette (`Cmd/Ctrl+Shift+P`):
+
+| Command | What it does |
+|---|---|
+| **Explain My Error: Explain Last Terminal Error** | Explains the most recently detected failing command |
+| **Explain My Error: Explain Selected Text** | Explains whatever error text you've selected in the editor |
+| **Explain My Error: Configure AI Provider** | Choose an AI provider (Gemini, Hugging Face, Anthropic, OpenAI) and enter its API key |
+| **Explain My Error: Toggle Auto-Detect On Failure** | Turn the automatic "command failed" popup on or off |
+| **Explain My Error: Clear Cached AI Responses** | Wipe locally cached AI answers, so the next matching error gets a fresh AI response |
+
 ## Settings
 
 | Setting | Default | Description |
