@@ -61,16 +61,62 @@ export function showExplanation(content: DisplayContent) {
 
 async function openFileAtLine(file: string, line: number) {
   try {
-    const uri = vscode.Uri.file(file);
+    const resolvedFile = await resolveRealSourceFile(file);
+    const uri = vscode.Uri.file(resolvedFile);
     const doc = await vscode.workspace.openTextDocument(uri);
     const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
     const zeroBasedLine = Math.max(0, line - 1);
     const range = doc.lineAt(Math.min(zeroBasedLine, doc.lineCount - 1)).range;
     editor.selection = new vscode.Selection(range.start, range.end);
     editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+
+    if (resolvedFile !== file) {
+      vscode.window.showInformationMessage(
+        'Explain My Error: this ran via a "Run Code" button, which uses a temporary copy — opened your actual file instead (same line number).'
+      );
+    }
   } catch (err: any) {
     vscode.window.showWarningMessage(`Explain My Error: couldn't open ${file} — ${err.message}`);
   }
+}
+
+/**
+ * The "Code Runner" extension executes files by copying their content into
+ * a temp file named "tempCodeRunnerFile.<ext>" in the same folder, then
+ * running that copy. Since it's a verbatim copy, line numbers in the
+ * resulting traceback still correctly correspond to the real, currently
+ * open file — so rather than jumping to that confusing temp file, try to
+ * find and open the real source file instead.
+ */
+export async function resolveRealSourceFile(file: string): Promise<string> {
+  const baseName = file.split(/[\\/]/).pop() || '';
+  if (!baseName.toLowerCase().startsWith('tempcoderunnerfile')) {
+    return file;
+  }
+
+  const ext = baseName.includes('.') ? baseName.slice(baseName.lastIndexOf('.')) : '';
+  const tempDir = file.slice(0, file.length - baseName.length);
+
+  // Prefer whichever matching-extension file is currently open and active —
+  // that's almost certainly the file the user actually ran.
+  const candidates = vscode.workspace.textDocuments.filter(
+    (doc) =>
+      !doc.isUntitled &&
+      doc.fileName.toLowerCase().endsWith(ext.toLowerCase()) &&
+      !doc.fileName.toLowerCase().includes('tempcoderunnerfile')
+  );
+
+  // Prefer one in the same folder as the temp file, if there's a choice.
+  const sameFolder = candidates.find((doc) => doc.fileName.startsWith(tempDir));
+  if (sameFolder) {
+    return sameFolder.fileName;
+  }
+  if (candidates.length > 0) {
+    return candidates[0].fileName;
+  }
+
+  // No better candidate found — fall back to the temp file itself.
+  return file;
 }
 
 function escapeHtml(text: string): string {

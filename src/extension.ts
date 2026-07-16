@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
-import { matchError, matchAllErrors, looksLikeError } from './errorMatcher';
-import { showExplanation } from './webviewPanel';
+import { matchError, matchAllErrors, looksLikeError, detectLanguageFromCommand, detectLanguageFromEditorLanguageId } from './errorMatcher';
+import { showExplanation, resolveRealSourceFile } from './webviewPanel';
 import { getSelectedProvider, chooseProvider, getApiKey, promptAndStoreApiKey, explainWithAi, PROVIDERS } from './aiExplainer';
 import { cleanTerminalOutput, extractLocation } from './textUtils';
+import { getCachedExplanation, storeCachedExplanation, clearAiCache, getAiCacheSize } from './aiCache';
 
 let statusBarItem: vscode.StatusBarItem;
 let lastFailedOutput: string | undefined;
+let lastFailedOutputLanguageHint: string | undefined;
 const executionOutputs = new WeakMap<vscode.TerminalShellExecution, string>();
 
 export function activate(context: vscode.ExtensionContext) {
@@ -25,7 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
         );
         return;
       }
-      await runExplainFlow(context, lastFailedOutput);
+      await runExplainFlow(context, lastFailedOutput, lastFailedOutputLanguageHint);
     })
   );
 
@@ -38,7 +40,8 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
       const text = editor.document.getText(editor.selection);
-      await runExplainFlow(context, text);
+      const languageHint = detectLanguageFromEditorLanguageId(editor.document.languageId);
+      await runExplainFlow(context, text, languageHint);
     })
   );
 
@@ -60,6 +63,19 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
       await promptAndStoreApiKey(context, provider);
+    })
+  );
+
+  // ---- Command: clear cached AI responses ----
+  context.subscriptions.push(
+    vscode.commands.registerCommand('explainMyError.clearAiCache', async () => {
+      const size = getAiCacheSize(context);
+      if (size === 0) {
+        vscode.window.showInformationMessage('No cached AI responses to clear.');
+        return;
+      }
+      const cleared = await clearAiCache(context);
+      vscode.window.showInformationMessage(`Cleared ${cleared} cached AI response(s).`);
     })
   );
 
@@ -132,6 +148,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         lastFailedOutput = trimmedOutput;
+        lastFailedOutputLanguageHint = detectLanguageFromCommand(endEvent.execution.commandLine.value);
         statusBarItem.show();
 
         const choice = await vscode.window.showWarningMessage(
@@ -141,7 +158,7 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         if (choice === 'Explain it') {
-          await runExplainFlow(context, trimmedOutput);
+          await runExplainFlow(context, trimmedOutput, lastFailedOutputLanguageHint);
         }
       })
     );
@@ -159,47 +176,70 @@ function labelForBlock(bm: ReturnType<typeof matchAllErrors>[number], index: num
   return `#${index + 1}: ${trimmed}`;
 }
 
-async function runExplainFlow(context: vscode.ExtensionContext, errorText: string) {
-  const blockMatches = matchAllErrors(errorText);
+async function runExplainFlow(context: vscode.ExtensionContext, errorText: string, languageHint?: string) {
+  const blockMatches = matchAllErrors(errorText, languageHint);
 
   if (blockMatches.length <= 1) {
-    await explainOneBlock(context, errorText, {});
+    await explainOneBlock(context, errorText, {}, languageHint);
     return;
   }
 
   // Multiple distinct errors detected in this selection/capture.
   const [primary, ...rest] = blockMatches;
 
-  const otherErrors = rest.map((bm, i) => {
-    if (bm.matched && bm.rule) {
-      const fixSteps = bm.rule.dynamicFix ? bm.rule.dynamicFix(bm.rawSnippet) : bm.rule.fix;
+  const otherErrors = await Promise.all(
+    rest.map(async (bm, i) => {
+      const resolvedLocation = await resolveLocation(bm.blockText);
+      if (bm.matched && bm.rule) {
+        const fixSteps = bm.rule.dynamicFix ? bm.rule.dynamicFix(bm.rawSnippet) : bm.rule.fix;
+        return {
+          label: labelForBlock(bm, i + 1),
+          whatHappened: bm.rule.whatHappened,
+          why: bm.rule.why,
+          fix: fixSteps,
+          rawSnippet: bm.rawSnippet,
+          matched: true,
+          location: resolvedLocation
+        };
+      }
       return {
         label: labelForBlock(bm, i + 1),
-        whatHappened: bm.rule.whatHappened,
-        why: bm.rule.why,
-        fix: fixSteps,
+        whatHappened: "This doesn't match a known error pattern yet.",
+        why: 'Select just this error text on its own and run "Explain Selected Text" again to try the AI fallback (if enabled) specifically for this one.',
+        fix: [],
         rawSnippet: bm.rawSnippet,
-        matched: true,
-        location: extractLocation(bm.blockText) || undefined
+        matched: false,
+        location: resolvedLocation
       };
-    }
-    return {
-      label: labelForBlock(bm, i + 1),
-      whatHappened: "This doesn't match a known error pattern yet.",
-      why: 'Select just this error text on its own and run "Explain Selected Text" again to try the AI fallback (if enabled) specifically for this one.',
-      fix: [],
-      rawSnippet: bm.rawSnippet,
-      matched: false,
-      location: extractLocation(bm.blockText) || undefined
-    };
-  });
+    })
+  );
 
-  await explainOneBlock(context, primary.blockText, { otherErrors, fullRawText: errorText });
+  await explainOneBlock(context, primary.blockText, { otherErrors, fullRawText: errorText }, languageHint);
 }
 
-async function explainOneBlock(context: vscode.ExtensionContext, errorText: string, extra: ExtraDisplayFields) {
-  const match = matchError(errorText);
-  const codeLocation = extractLocation(errorText) || undefined;
+/**
+ * Finds a file+line reference in the text, then resolves it to the real
+ * source file if it points at a Code Runner temp file — so the "Go to
+ * line" button's label shows the correct real filename from the start,
+ * not just at click-time.
+ */
+async function resolveLocation(text: string) {
+  const location = extractLocation(text);
+  if (!location) {
+    return undefined;
+  }
+  const resolvedFile = await resolveRealSourceFile(location.file);
+  return { file: resolvedFile, line: location.line };
+}
+
+async function explainOneBlock(
+  context: vscode.ExtensionContext,
+  errorText: string,
+  extra: ExtraDisplayFields,
+  languageHint?: string
+) {
+  const match = matchError(errorText, languageHint);
+  const codeLocation = await resolveLocation(errorText);
 
   if (match.matched && match.rule) {
     const fixSteps = match.rule.dynamicFix ? match.rule.dynamicFix(match.rawSnippet) : match.rule.fix;
@@ -236,6 +276,24 @@ async function explainOneBlock(context: vscode.ExtensionContext, errorText: stri
     return;
   }
 
+  // Check the local cache first — if we've already gotten an AI answer for
+  // "this kind" of error before, use it instantly instead of spending
+  // another API call on an essentially repeated question.
+  const cached = getCachedExplanation(context, errorText);
+  if (cached) {
+    showExplanation({
+      whatHappened: cached.whatHappened,
+      why: cached.why,
+      fix: cached.fix,
+      rawSnippet: match.rawSnippet,
+      source: 'ai',
+      aiProviderLabel: 'cached — no new API call made',
+      location: codeLocation,
+      ...extra
+    });
+    return;
+  }
+
   let apiKey: string | undefined;
   let provider = getSelectedProvider(context);
 
@@ -265,6 +323,7 @@ async function explainOneBlock(context: vscode.ExtensionContext, errorText: stri
           undefined,
           config.get<string>('huggingfaceModel', 'mistralai/Mistral-7B-Instruct-v0.2')
         );
+        await storeCachedExplanation(context, errorText, aiResult);
         showExplanation({
           whatHappened: aiResult.whatHappened,
           why: aiResult.why,

@@ -288,7 +288,7 @@ export const errorRules: ErrorRule[] = [
   {
     id: 'node-import-unquoted-path',
     category: 'node',
-    pattern: /SyntaxError: Unexpected identifier '([^']+)'/,
+    pattern: /import\s+\S+\s+from\s+[a-zA-Z_$][\w$]*\s*;?[\s\S]*SyntaxError: Unexpected identifier '([^']+)'/,
     whatHappened: "Your import statement has a module name that isn't wrapped in quotes.",
     why: "JavaScript treats module names as text (strings), so they need quotes. Writing import parser from lodash (no quotes) makes JS think lodash is a variable name, which breaks the syntax.",
     fix: [
@@ -372,6 +372,18 @@ export const errorRules: ErrorRule[] = [
     ]
   },
   {
+    id: 'python-filenotfounderror',
+    category: 'python',
+    pattern: /FileNotFoundError: \[Errno 2\] No such file or directory: '([^']+)'/i,
+    whatHappened: "Your code tried to open a file that doesn't exist at the path it used.",
+    why: "This usually means a typo in the file path, the file is in a different folder than expected, or the script is running from a different working directory than you assumed.",
+    fix: [
+      'Check the exact filename/path shown in the error for typos',
+      "Make sure you're running the script from the folder where that file actually lives (pwd to check, ls/dir to see what's actually there)",
+      'Consider using an absolute path, or building the path relative to the script\'s own location, instead of assuming a specific working directory'
+    ]
+  },
+  {
     id: 'python-indentationerror',
     category: 'python',
     pattern: /IndentationError/i,
@@ -398,7 +410,7 @@ export const errorRules: ErrorRule[] = [
   {
     id: 'python-typeerror',
     category: 'python',
-    pattern: /TypeError: /i,
+    pattern: /Traceback \(most recent call last\):[\s\S]*TypeError: /i,
     whatHappened: 'Your code tried to use a value in a way that doesn\'t match its type (e.g. adding text and a number together).',
     why: 'Python is strict about mixing types in certain operations — this error is Python telling you exactly which operation failed and why.',
     fix: [
@@ -434,7 +446,7 @@ export const errorRules: ErrorRule[] = [
   {
     id: 'python-syntaxerror',
     category: 'python',
-    pattern: /SyntaxError: /i,
+    pattern: /Traceback \(most recent call last\):[\s\S]*SyntaxError: /i,
     whatHappened: 'Python found something that breaks its grammar rules — invalid syntax.',
     why: 'Often a missing colon after if/for/def, a mismatched bracket/quote, or leftover code from a different language.',
     fix: [
@@ -1352,7 +1364,7 @@ export const errorRules: ErrorRule[] = [
   {
     id: 'dns-not-found',
     category: 'general',
-    pattern: /ENOTFOUND|getaddrinfo ENOTFOUND/i,
+    pattern: /\bENOTFOUND\b|getaddrinfo ENOTFOUND/i,
     whatHappened: "Your computer couldn't find the server address you were trying to reach.",
     why: "Usually a typo in a URL/hostname, no internet connection, or the domain genuinely doesn't exist/resolve.",
     fix: [
